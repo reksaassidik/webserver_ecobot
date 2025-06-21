@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ecobot Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #f5f6fa;
+      --text: #2d3436;
+      --card: #ffffff;
+      --border: #ccc;
+      --header: #0984e3;
+    }
+
+    body.dark {
+      --bg: #1e1e1e;
+      --text: #f1f1f1;
+      --card: #2a2a2a;
+      --border: #444;
+      --header: #0c76c1;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      margin: 0;
+    }
+
+    button {
+      padding: 6px 12px;
+      background: var(--header);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    #filters {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    #pesan {
+      text-align: center;
+      font-style: italic;
+    }
+
+    main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .card {
+      background-color: var(--card);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 1000px;
+      width: 100%;
+      margin-top: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 8px;
+      text-align: center;
+    }
+
+    th {
+      background-color: var(--header);
+      color: white;
+    }
+
+    #totalHarga {
+      margin-top: 10px;
+      text-align: right;
+      font-weight: bold;
+    }
+
+    canvas {
+      margin-top: 20px;
+      max-height: 300px;
+    }
+
+    @media print {
+      button, #filters { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📦 Laporan Penyetoran Ecobot</h1>
+    <div>
+      <button id="mode-toggle">🌙 Ganti Tema</button>
+      <button onclick="window.print()">🖨️ Cetak / PDF</button>
+    </div>
+  </header>
+
+  <section id="filters">
+    <label for="tanggalFilter">Filter tanggal:</label>
+    <input type="date" id="tanggalFilter" onchange="muatData()" />
+  </section>
+
+  <div id="pesan">Memuat data...</div>
+
+  <main>
+    <div class="card">
+      <table id="tabel-ecobot" style="display: none;">
+        <thead>
+          <tr>
+            <th>Waktu</th>
+            <th>Jumlah Botol</th>
+            <th>Botol Plastik</th>
+            <th>Botol Kaleng</th>
+            <th>Harga (Rp)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="totalHarga"></div>
+      <canvas id="chartBotol" style="display: none;"></canvas>
+      <canvas id="lineChart" style="display: none;"></canvas>
+    </div>
+  </main>
+
+  <script>
+    const modeBtn = document.getElementById("mode-toggle");
+    modeBtn.onclick = () => {
+      document.body.classList.toggle("dark");
+      modeBtn.textContent = document.body.classList.contains("dark") ? "☀️ Ganti Tema" : "🌙 Ganti Tema";
+    };
+
+    let chart = null;
+    let lineChart = null;
+
+    function muatData() {
+      fetch('/data')
+        .then(res => res.json())
+        .then(data => {
+          const tbody = document.querySelector("#tabel-ecobot tbody");
+          const table = document.getElementById("tabel-ecobot");
+          const pesan = document.getElementById("pesan");
+          const chartEl = document.getElementById("chartBotol");
+          const lineChartEl = document.getElementById("lineChart");
+          const totalHargaEl = document.getElementById("totalHarga");
+          const filterDate = document.getElementById("tanggalFilter").value;
+
+          let totalHarga = 0;
+
+          const dataValid = data.filter(row => {
+            const valid = (row.jumlah > 0 || row.botol_plastik > 0 || row.botol_kaleng > 0);
+            if (!filterDate) return valid;
+            return valid && row.waktu.startsWith(filterDate);
+          });
+
+          if (dataValid.length === 0) {
+            table.style.display = "none";
+            chartEl.style.display = "none";
+            lineChartEl.style.display = "none";
+            totalHargaEl.textContent = "";
+            pesan.textContent = "Belum ada data penyetoran dari Ecobot.";
+            return;
+          }
+
+          table.style.display = "table";
+          chartEl.style.display = "block";
+          lineChartEl.style.display = "block";
+          pesan.textContent = "";
+
+          tbody.innerHTML = dataValid.map(row => {
+            totalHarga += row.harga;
+            return `
+              <tr>
+                <td>${row.waktu}</td>
+                <td>${row.jumlah}</td>
+                <td>${row.botol_plastik}</td>
+                <td>${row.botol_kaleng}</td>
+                <td>Rp ${row.harga}</td>
+              </tr>
+            `;
+          }).join("");
+
+          totalHargaEl.textContent = `Total Harga Keseluruhan: Rp ${totalHarga}`;
+
+          const labels = dataValid.map(row => row.waktu);
+          const jumlahData = dataValid.map(row => row.jumlah);
+          const plastikData = dataValid.map(row => row.botol_plastik);
+          const kalengData = dataValid.map(row => row.botol_kaleng);
+
+          if (chart) chart.destroy();
+          chart = new Chart(chartEl, {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Jumlah Botol',
+                data: jumlahData,
+                backgroundColor: '#00cec9'
+              }]
+            },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false } },
+              scales: { y: { beginAtZero: true } }
+            }
+          });
+
+          if (lineChart) lineChart.destroy();
+          lineChart = new Chart(lineChartEl, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [
+                {
+                  label: 'Botol Plastik',
+                  data: plastikData,
+                  borderColor: '#0984e3',
+                  fill: false
+                },
+                {
+                  label: 'Botol Kaleng',
+                  data: kalengData,
+                  borderColor: '#d63031',
+                  fill: false
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              scales: {
+                y: { beginAtZero: true }
+              }
+            }
+          });
+        });
+    }
+
+    setInterval(muatData, 5000);
+    muatData();
+  </script>
+</body>
+</html>
